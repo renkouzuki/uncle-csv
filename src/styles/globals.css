@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 body{
-  background-color: rgb(14, 17, 34);
+  background-color: rgb(244, 234, 234);
 }
 @layer base {
   :root {

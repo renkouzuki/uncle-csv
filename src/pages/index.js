@@ -5,6 +5,7 @@ import { Plus, Save, Upload } from "lucide-react";
 import { toast } from "sonner";
 import Papa from "papaparse";
 import { useState } from "react";
+import WelcomeHeader from "@/components/WelcomeHeader";
 
 export default function Home() {
   const [items, setItems] = useState([]);
@@ -12,13 +13,14 @@ export default function Home() {
   const emptyItem = {
     id: Date.now(),
     orderDate: new Date().toISOString().split("T")[0],
-    finish: "",
+    finish: new Date().toISOString().split("T")[0],
     companyName: "",
     quantity: "",
     unitPrice: "",
     total: 0,
     companyOrderDate: new Date().toISOString().split("T")[0],
     finalTotal: "",
+    backgroundColor: "#ffffff",
   };
 
   const handleAddRow = () => {
@@ -55,6 +57,18 @@ export default function Home() {
     setItems((prevItems) => prevItems.filter((item) => item.id !== id));
   };
 
+  const handleReorder = (newItems) => {
+    setItems(newItems);
+  };
+
+  const handleRowColorChange = (id, color) => {
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item.id === id ? { ...item, backgroundColor: color } : item
+      )
+    );
+  };
+
   const handleSaveToCSV = () => {
     try {
       const exportData = items.map(({ id, ...item }) => item);
@@ -86,7 +100,7 @@ export default function Home() {
                 id: Date.now() + Math.random(),
                 orderDate:
                   row.orderDate || new Date().toISOString().split("T")[0],
-                finish: row.finish || "",
+                finish: row.finish || new Date().toISOString().split("T")[0],
                 companyName: row.companyName || "",
                 quantity: row.quantity || "",
                 unitPrice: row.unitPrice || "",
@@ -95,6 +109,7 @@ export default function Home() {
                   row.companyOrderDate ||
                   new Date().toISOString().split("T")[0],
                 finalTotal: row.finalTotal || "",
+                backgroundColor: row.backgroundColor || "#ffffff",
               }));
             setItems(parsedItems);
             toast.success(`Imported ${parsedItems.length} rows successfully!`);
@@ -111,51 +126,56 @@ export default function Home() {
   };
 
   return (
-    <Card className="w-full mx-auto bg-gray-900 border-gray-800">
-      <CardContent className="p-6">
-        <div className="space-y-6">
-          <InvoiceTable
-            items={items}
-            onInputChange={handleInputChange}
-            onDelete={handleDelete}
-          />
+    <div className="p-6 max-w-[1200px] mx-auto">
+      <WelcomeHeader />
+      <Card className="w-full mx-auto bg-white border-gray-200">
+        <CardContent className="p-6">
+          <div className="space-y-6">
+            <InvoiceTable
+              items={items}
+              onInputChange={handleInputChange}
+              onDelete={handleDelete}
+              onReorder={handleReorder}
+              onRowColorChange={handleRowColorChange}
+            />
 
-          <div className="flex justify-between items-center pt-4 border-t border-gray-800">
-            <div className="space-x-2">
+            <div className="flex justify-between items-center pt-4 border-t border-gray-200">
+              <div className="space-x-2">
+                <Button
+                  onClick={handleAddRow}
+                  className="bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Row
+                </Button>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="csvUpload"
+                />
+                <Button
+                  onClick={() => document.getElementById("csvUpload").click()}
+                  className="bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors"
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Import CSV
+                </Button>
+              </div>
               <Button
-                onClick={handleAddRow}
-                className="bg-[#1e293b] text-gray-200 hover:bg-[#334155] transition-colors"
+                onClick={handleSaveToCSV}
+                disabled={items.length === 0}
+                className="bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors
+                     disabled:bg-gray-50 disabled:text-gray-400 disabled:cursor-not-allowed"
               >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Row
-              </Button>
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="csvUpload"
-              />
-              <Button
-                onClick={() => document.getElementById("csvUpload").click()}
-                className="bg-[#1e293b] text-gray-200 hover:bg-[#334155] transition-colors"
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Import CSV
+                <Save className="w-4 h-4 mr-2" />
+                Save as CSV
               </Button>
             </div>
-            <Button
-              onClick={handleSaveToCSV}
-              disabled={items.length === 0}
-              className={`bg-[#1e293b] text-gray-200 hover:bg-[#334155] transition-colors
-                     disabled:bg-gray-800 disabled:text-gray-500 disabled:cursor-not-allowed`}
-            >
-              <Save className="w-4 h-4 mr-2" />
-              Save as CSV
-            </Button>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

@@ -1,249 +1,305 @@
 import React from "react";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Trash2 } from "lucide-react";
+import { Trash2, GripVertical, Paintbrush } from "lucide-react";
 import { Toaster, toast } from "sonner";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-const InvoiceTable = ({ items, onInputChange, onDelete }) => {
-  const totals = items.reduce(
-    (acc, item) => ({
-      quantity: acc.quantity + (parseFloat(item.quantity) || 0),
-      unitPrice: acc.unitPrice + (parseFloat(item.unitPrice) || 0),
-      total: acc.total + (parseFloat(item.total) || 0),
-      finalTotal: acc.finalTotal + (parseFloat(item.finalTotal) || 0),
-    }),
-    {
-      quantity: 0,
-      unitPrice: 0,
-      total: 0,
-      finalTotal: 0,
-    }
-  );
+const getContrastTextColor = (bgColor) => {
+  const hex = bgColor.replace("#", "");
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? "#000000" : "#ffffff";
+};
 
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (file) {
-      try {
-        // Your existing file upload logic here
-        toast.success("CSV imported successfully!", {
-          description: `Imported ${items.length} rows from ${file.name}`,
-        });
-      } catch (error) {
-        toast.error("Failed to import CSV", {
-          description: "Please check your file format and try again",
-        });
-      }
-    }
-    event.target.value = "";
+const SortableTableRow = ({
+  item,
+  columns,
+  onInputChange,
+  onDelete,
+  onColorChange,
+}) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    backgroundColor: item.backgroundColor || "#ffffff",
+    color: getContrastTextColor(item.backgroundColor || "#ffffff"),
   };
 
-  const handleSaveCSV = () => {
-    try {
-      // Your existing CSV save logic here
-      toast.success("CSV exported successfully!", {
-        description: "Your invoice data has been saved",
-      });
-    } catch (error) {
-      toast.error("Failed to export CSV", {
-        description: "Please try again",
-      });
+  const handleColorClick = (e) => {
+    e.stopPropagation();
+    const input = document.createElement("input");
+    input.type = "color";
+    input.value = item.backgroundColor || "#ffffff";
+    input.onchange = (e) => {
+      onColorChange(item.id, e.target.value);
+      toast.success("Row color updated");
+    };
+    input.click();
+  };
+
+  return (
+    <tr
+      ref={setNodeRef}
+      style={style}
+      className="group border-b border-gray-200"
+    >
+      {columns.map((column, index) => {
+        if (column.id === "actions") {
+          return (
+            <td
+              key={column.id}
+              className="w-10 p-0 flex items-center justify-end"
+            >
+              <button
+                onClick={() => {
+                  onDelete(item.id);
+                  toast.success("Row deleted");
+                }}
+                className="hover:text-red-500 p-1 transition-colors"
+                style={{
+                  color: getContrastTextColor(
+                    item.backgroundColor || "#ffffff"
+                  ),
+                }}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </td>
+          );
+        }
+
+        const inputStyle = {
+          color: getContrastTextColor(item.backgroundColor || "#ffffff"),
+          backgroundColor: "transparent",
+        };
+
+        const extraControls = index === 0 && (
+          <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={handleColorClick}
+              className="p-1 transition-colors mr-1"
+              style={{
+                color: getContrastTextColor(item.backgroundColor || "#ffffff"),
+              }}
+            >
+              <Paintbrush className="w-3 h-3" />
+            </button>
+            <div {...attributes} {...listeners} className="cursor-grab">
+              <GripVertical
+                className="w-3 h-3"
+                style={{
+                  color: getContrastTextColor(
+                    item.backgroundColor || "#ffffff"
+                  ),
+                }}
+              />
+            </div>
+          </div>
+        );
+
+        return (
+          <td key={column.id} className="p-0 border-r border-gray-200">
+            <div className="flex items-center">
+              {extraControls}
+              {column.id === "total" ? (
+                <div className="px-2 text-right w-full">
+                  {item.total.toFixed(2)}
+                </div>
+              ) : column.id === "dollar" ? (
+                <div className="text-center w-full">$</div>
+              ) : (
+                <Input
+                  type={
+                    ["orderDate", "finish", "companyOrderDate"].includes(
+                      column.id
+                    )
+                      ? "date"
+                      : ["quantity", "unitPrice", "finalTotal"].includes(
+                          column.id
+                        )
+                      ? "number"
+                      : "text"
+                  }
+                  value={item[column.id]}
+                  onChange={(e) =>
+                    onInputChange(item.id, column.id, e.target.value)
+                  }
+                  placeholder={
+                    column.id === "companyName" ? "Company name" : "0"
+                  }
+                  step={
+                    ["unitPrice", "finalTotal"].includes(column.id)
+                      ? "0.01"
+                      : "1"
+                  }
+                  className={`h-7 min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
+                            bg-transparent w-full ${
+                              ["quantity", "unitPrice", "finalTotal"].includes(
+                                column.id
+                              )
+                                ? "text-right"
+                                : ""
+                            }`}
+                  style={inputStyle}
+                />
+              )}
+            </div>
+          </td>
+        );
+      })}
+    </tr>
+  );
+};
+
+const InvoiceTable = ({
+  items,
+  onInputChange,
+  onDelete,
+  onReorder,
+  onRowColorChange,
+}) => {
+  const columns = [
+    { id: "orderDate", label: "DAT", width: "100px" },
+    { id: "finish", label: "XONG", width: "100px" },
+    { id: "companyName", label: "CTY", width: "150px" },
+    { id: "quantity", label: "SL", width: "70px" },
+    { id: "unitPrice", label: "1 CAI", width: "80px" },
+    { id: "total", label: "TIEN", width: "90px" },
+    { id: "dollar", label: "$", width: "30px" },
+    { id: "companyOrderDate", label: "NGAY CK", width: "100px" },
+    { id: "finalTotal", label: "CK", width: "80px" },
+    { id: "actions", label: "", width: "40px" },
+  ];
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      const oldIndex = items.findIndex((item) => item.id === active.id);
+      const newIndex = items.findIndex((item) => item.id === over.id);
+      const newItems = arrayMove(items, oldIndex, newIndex);
+      onReorder(newItems);
+      toast.success("Row order updated");
     }
   };
 
   return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900">
+    <div className="rounded-lg border border-gray-200 bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1200px] border-collapse text-sm text-gray-100">
-          <colgroup>
-            <col className="w-[120px]" />
-            <col className="w-[100px]" />
-            <col className="w-[180px]" />
-            <col className="w-[100px]" />
-            <col className="w-[100px]" />
-            <col className="w-[120px]" />
-            <col className="w-[40px]" />
-            <col className="w-[120px]" />
-            <col className="w-[120px]" />
-            <col className="w-[40px]" />
-          </colgroup>
-
+        <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
-            <tr className="bg-gray-800 h-8">
-              <th className="border-r border-gray-700 text-left px-2 font-medium text-gray-200">
-                Order Date
-              </th>
-              <th className="border-r border-gray-700 text-left px-2 font-medium text-gray-200">
-                Status
-              </th>
-              <th className="border-r border-gray-700 text-left px-2 font-medium text-gray-200">
-                Company Name
-              </th>
-              <th className="border-r border-gray-700 text-right px-2 font-medium text-gray-200">
-                Quantity
-              </th>
-              <th className="border-r border-gray-700 text-right px-2 font-medium text-gray-200">
-                Unit Price
-              </th>
-              <th className="border-r border-gray-700 text-right px-2 font-medium text-gray-200">
-                Total
-              </th>
-              <th className="border-r border-gray-700 text-center px-2 font-medium text-gray-200">
-                $
-              </th>
-              <th className="border-r border-gray-700 text-left px-2 font-medium text-gray-200">
-                Company Order
-              </th>
-              <th className="border-r border-gray-700 text-right px-2 font-medium text-gray-200">
-                Final Total
-              </th>
-              <th></th>
+            <tr className="bg-gray-50">
+              {columns.map((column) => (
+                <th
+                  key={column.id}
+                  className="border-r border-gray-200 px-2 py-1.5 font-medium text-left"
+                  style={{ width: column.width }}
+                >
+                  {column.label}
+                </th>
+              ))}
             </tr>
           </thead>
 
-          <tbody className="bg-gray-900">
-            {items.map((item) => (
-              <tr
-                key={item.id}
-                className="hover:bg-gray-800/50 h-8 transition-colors"
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <tbody>
+              <SortableContext
+                items={items}
+                strategy={verticalListSortingStrategy}
               >
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    type="date"
-                    value={item.orderDate}
-                    onChange={(e) =>
-                      onInputChange(item.id, "orderDate", e.target.value)
-                    }
-                    className="h-7 min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
+                {items.map((item) => (
+                  <SortableTableRow
+                    key={item.id}
+                    item={item}
+                    columns={columns}
+                    onInputChange={onInputChange}
+                    onDelete={onDelete}
+                    onColorChange={onRowColorChange}
                   />
-                </td>
-                <td className="p-0 border-r border-gray-700">
-                  <Select
-                    value={item.finish}
-                    onValueChange={(value) => {
-                      onInputChange(item.id, "finish", value);
-                      toast.success(`Status updated to ${value}`);
-                    }}
-                  >
-                    <SelectTrigger
-                      className="h-7 min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 
-                                            rounded-none bg-transparent text-gray-100"
-                    >
-                      <SelectValue placeholder="Status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    value={item.companyName}
-                    onChange={(e) =>
-                      onInputChange(item.id, "companyName", e.target.value)
-                    }
-                    placeholder="Company name"
-                    className="h-7 min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
-                  />
-                </td>
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    type="number"
-                    value={item.quantity}
-                    onChange={(e) =>
-                      onInputChange(item.id, "quantity", e.target.value)
-                    }
-                    placeholder="Qty"
-                    className="h-7 text-end min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
-                  />
-                </td>
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    type="number"
-                    value={item.unitPrice}
-                    onChange={(e) =>
-                      onInputChange(item.id, "unitPrice", e.target.value)
-                    }
-                    placeholder="0.00"
-                    step="0.01"
-                    className="h-7 text-end min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
-                  />
-                </td>
-                <td className="px-2 text-right border-r border-gray-700">
-                  ${item.total.toFixed(2)}
-                </td>
-                <td className="text-center border-r border-gray-700">$</td>
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    type="date"
-                    value={item.companyOrderDate}
-                    onChange={(e) =>
-                      onInputChange(item.id, "companyOrderDate", e.target.value)
-                    }
-                    className="h-7 min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
-                  />
-                </td>
-                <td className="p-0 border-r border-gray-700">
-                  <Input
-                    type="number"
-                    value={item.finalTotal}
-                    onChange={(e) =>
-                      onInputChange(item.id, "finalTotal", e.target.value)
-                    }
-                    placeholder="0.00"
-                    step="0.01"
-                    className="h-7 text-end min-h-0 px-1 py-0 text-sm border-0 focus:ring-1 focus:ring-blue-500 rounded-none
-                             bg-transparent text-gray-100"
-                  />
-                </td>
-                <td className="w-10 p-0 text-center">
-                  <button
-                    onClick={() => {
-                      onDelete(item.id);
-                      toast.success("Row deleted");
-                    }}
-                    className="text-gray-400 hover:text-red-400 p-1 rounded transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+                ))}
+              </SortableContext>
+            </tbody>
+          </DndContext>
 
           <tfoot>
-            <tr className="bg-gray-800 h-8 font-medium">
+            <tr className="bg-gray-50">
               <td
                 colSpan="3"
-                className="text-right px-2 border-r border-gray-700 text-gray-200"
+                className="text-right px-2 py-1.5 border-r border-gray-200"
               >
                 Totals:
               </td>
-              <td className="text-right px-2 border-r border-gray-700 text-gray-200">
-                {totals.quantity.toFixed(0)}
+              <td className="text-right px-2 py-1.5 border-r border-gray-200">
+                {items
+                  .reduce(
+                    (sum, item) => sum + (parseFloat(item.quantity) || 0),
+                    0
+                  )
+                  .toFixed(0)}
               </td>
-              <td className="text-right px-2 border-r border-gray-700 text-gray-200">
-                ${totals.unitPrice.toFixed(2)}
+              <td className="text-right px-2 py-1.5 border-r border-gray-200">
+                {items
+                  .reduce(
+                    (sum, item) => sum + (parseFloat(item.unitPrice) || 0),
+                    0
+                  )
+                  .toFixed(2)}
               </td>
-              <td className="text-right px-2 border-r border-gray-700 text-gray-200">
-                ${totals.total.toFixed(2)}
+              <td className="text-right px-2 py-1.5 border-r border-gray-200">
+                {items
+                  .reduce((sum, item) => sum + (parseFloat(item.total) || 0), 0)
+                  .toFixed(2)}
               </td>
-              <td className="border-r border-gray-700"></td>
-              <td className="border-r border-gray-700"></td>
-              <td className="text-right px-2 border-r border-gray-700 text-gray-200">
-                ${totals.finalTotal.toFixed(2)}
+              <td className="border-r border-gray-200"></td>
+              <td className="border-r border-gray-200"></td>
+              <td className="text-right px-2 py-1.5 border-r border-gray-200">
+                {items
+                  .reduce(
+                    (sum, item) => sum + (parseFloat(item.finalTotal) || 0),
+                    0
+                  )
+                  .toFixed(2)}
               </td>
               <td></td>
             </tr>
